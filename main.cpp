@@ -20,7 +20,7 @@ int main() {
 
     anthill.printGraph();
 
-    anthill.simulate(5);
+    anthill.simulate(10);
 
     return 0;
 }
