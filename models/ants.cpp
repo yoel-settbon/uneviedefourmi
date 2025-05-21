@@ -69,7 +69,6 @@ void Anthill::scheduleMovements() {
         std::vector<std::string> step;
         allArrived = true;
 
-        // libérer les salles à cette étape
         for (auto& [name, room] : rooms) {
             room.occupancy = 0;
         }
