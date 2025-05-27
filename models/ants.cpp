@@ -2,9 +2,6 @@
 #include <iostream>
 #include <unordered_map>
 #include <algorithm>
-#include <random>
-#include <limits>
-#include <functional>
 
 void Anthill::addRoom(const std::string& name, int capacityVal) {
     rooms[name] = Room{name, capacityVal};
@@ -24,7 +21,7 @@ void Anthill::addRoom(const std::string& name, int capacityVal) {
 void Anthill::addTunnel(const std::string& from, const std::string& to) {
     std::string u = from + "_out";
     std::string v = to + "_in";
-    capacity[u][v] = 1;
+    capacity[u][v] = 1000; // CORRECTION: Capacité très élevée pour les tunnels
     flow[u][v] = 0;
     flow[v][u] = 0;
     rooms[u].neighbors.push_back(v);
@@ -76,72 +73,61 @@ void Anthill::edmondsKarp(const std::string& source, const std::string& sink) {
     }
 }
 
-std::vector<std::vector<std::string>> Anthill::findAllPaths(const std::string& start, const std::string& end, int maxPaths) {
+void Anthill::buildPaths() {
     std::vector<std::vector<std::string>> allPaths;
-    
-    // Utiliser une approche DFS avec backtracking pour trouver plusieurs chemins
-    std::function<void(std::string, std::vector<std::string>&, std::set<std::string>&)> dfs;
-    
-    dfs = [&](std::string current, std::vector<std::string>& path, std::set<std::string>& visited) {
-        if (current == end) {
-            allPaths.push_back(path);
-            return;
-        }
-        
-        if (allPaths.size() >= maxPaths) return; // Limite pour éviter l'explosion combinatoire
-        
-        // Explorer tous les voisins possibles
-        if (capacity.count(current)) {
-            std::vector<std::string> neighbors;
-            for (const auto& [neighbor, cap] : capacity[current]) {
-                if (cap > 0 && !visited.count(neighbor)) {
-                    neighbors.push_back(neighbor);
+    auto tempFlow = flow;
+
+    // Extraire TOUS les chemins du flux maximum
+    while (true) {
+        std::vector<std::string> path;
+        std::string u = "S_v_out";
+        std::string t = "S_d_in";
+        std::set<std::string> visited;
+        path.push_back(u);
+
+        while (u != t) {
+            visited.insert(u);
+            bool advanced = false;
+            for (const auto& [v, f] : tempFlow[u]) {
+                if (f > 0 && !visited.count(v)) {
+                    path.push_back(v);
+                    u = v;
+                    advanced = true;
+                    break;
                 }
             }
-            
-            // Trier les voisins par nom pour un ordre déterministe mais varié
-            std::sort(neighbors.begin(), neighbors.end());
-            
-            for (const std::string& neighbor : neighbors) {
-                visited.insert(neighbor);
-                path.push_back(neighbor);
-                dfs(neighbor, path, visited);
-                path.pop_back();
-                visited.erase(neighbor);
-            }
+            if (!advanced) break;
         }
-    };
-    
-    std::vector<std::string> path = {start};
-    std::set<std::string> visited = {start};
-    dfs(start, path, visited);
-    
-    // Trier les chemins par longueur
-    std::sort(allPaths.begin(), allPaths.end(), [this](const auto& a, const auto& b) {
-        return calculateRealPathLength(a) < calculateRealPathLength(b);
-    });
-    
-    return allPaths;
-}
 
-void Anthill::buildPaths() {
-    // Trouver plusieurs chemins différents (pas seulement ceux du flux)
-    availablePaths = findAllPaths("S_v_out", "S_d_in", 10); // Limiter à 10 chemins max
-    
-    if (availablePaths.empty()) {
-        std::cout << "ERREUR: Aucun chemin trouvé!\n";
-        return;
+        if (path.back() == "S_d_in") {
+            for (size_t i = 0; i < path.size() - 1; ++i)
+                tempFlow[path[i]][path[i + 1]]--;
+            allPaths.push_back(path);
+        } else {
+            break;
+        }
     }
 
     std::cout << "\n=== CHEMINS DISPONIBLES ===\n";
-    for (size_t i = 0; i < availablePaths.size(); ++i) {
-        int cost = calculateRealPathLength(availablePaths[i]);
+    for (size_t i = 0; i < allPaths.size(); ++i) {
+        int cost = calculateRealPathLength(allPaths[i]);
         std::cout << "Chemin " << (i + 1) << " (coût: " << cost << "): ";
-        for (const auto& room : availablePaths[i]) {
+        for (const auto& room : allPaths[i]) {
             std::cout << room << " ";
         }
         std::cout << "\n";
     }
+
+    availablePaths = allPaths;
+    
+    // Initialiser toutes les fourmis à S_v_out
+    for (auto& ant : ants) {
+        ant.currentRoom = "S_v_out";
+        ant.pathIndex = 0;
+        ant.path.clear();
+    }
+    
+    std::cout << "\n=== INITIALISATION: " << ants.size() << " fourmis démarrent en S_v_out ===\n";
 }
 
 int Anthill::calculateRealPathLength(const std::vector<std::string>& path) {
@@ -154,113 +140,49 @@ int Anthill::calculateRealPathLength(const std::vector<std::string>& path) {
     return realSteps;
 }
 
-std::vector<std::string> Anthill::getBestAvailablePath(const std::string& currentPosition,
-                                                      const std::unordered_map<std::string, int>& currentOccupancy,
-                                                      int antId) {
-    std::vector<std::pair<int, std::vector<std::string>>> pathOptions;
+std::vector<std::string> Anthill::findBestNextMove(const std::string& currentPos, 
+                                                  const std::unordered_map<std::string, int>& occupancy) {
+    if (availablePaths.empty()) {
+        std::cout << "ERREUR: Aucun chemin disponible!\n";
+        return {};
+    }
+
+    std::vector<std::pair<int, std::vector<std::string>>> options;
     
-    // Évaluer tous les chemins disponibles depuis la position actuelle
-    for (const auto& fullPath : availablePaths) {
-        // Trouver où cette fourmi se trouve dans ce chemin
-        auto it = std::find(fullPath.begin(), fullPath.end(), currentPosition);
-        if (it != fullPath.end()) {
-            // Extraire le sous-chemin depuis la position actuelle
-            std::vector<std::string> subPath(it, fullPath.end());
+    for (const auto& path : availablePaths) {
+        auto it = std::find(path.begin(), path.end(), currentPos);
+        if (it != path.end() && it + 1 != path.end()) {
+            std::vector<std::string> move = {*it, *(it + 1)};
+            std::vector<std::string> remainingPath(it, path.end());
             
-            // Calculer un score basé sur la longueur et la congestion
-            int pathScore = calculatePathScore(subPath, currentOccupancy, antId);
-            pathOptions.push_back({pathScore, subPath});
-        }
-    }
-    
-    // Si aucun chemin existant ne convient, faire un BFS simple
-    if (pathOptions.empty()) {
-        return findShortestPath(currentPosition, "S_d_in", currentOccupancy);
-    }
-    
-    // Trier par score (plus petit = meilleur)
-    std::sort(pathOptions.begin(), pathOptions.end());
-    
-    return pathOptions[0].second;
-}
-
-int Anthill::calculatePathScore(const std::vector<std::string>& path, 
-                               const std::unordered_map<std::string, int>& currentOccupancy, 
-                               int antId) {
-    int score = calculateRealPathLength(path) * 10; // Base: longueur du chemin
-    
-    // Ajouter une pénalité pour la congestion
-    for (const auto& room : path) {
-        std::string baseRoom = room.substr(0, room.find_last_of('_'));
-        if (currentOccupancy.count(baseRoom) && rooms.count(baseRoom)) {
-            int occupancy = currentOccupancy.at(baseRoom);
-            int capacity = rooms.at(baseRoom).capacity;
+            int score = calculateRealPathLength(remainingPath) * 10;
             
-            if (occupancy >= capacity) {
-                score += 100; // Forte pénalité pour les salles pleines
-            } else {
-                score += occupancy * 5; // Pénalité proportionnelle à l'occupation
-            }
-        }
-    }
-    
-    // Ajouter une petite variation basée sur l'ID de la fourmi pour diversifier
-    score += (antId % 3); // Variation de 0-2 pour éviter que toutes les fourmis fassent le même choix
-    
-    return score;
-}
-
-std::vector<std::string> Anthill::findShortestPath(const std::string& start, const std::string& end,
-                                                  const std::unordered_map<std::string, int>& currentOccupancy) {
-    std::queue<std::string> q;
-    std::map<std::string, std::string> parent;
-    std::set<std::string> visited;
-    
-    q.push(start);
-    visited.insert(start);
-    parent[start] = "";
-
-    while (!q.empty()) {
-        std::string current = q.front();
-        q.pop();
-
-        if (current == end) {
-            std::vector<std::string> path;
-            std::string node = end;
-            while (!node.empty()) {
-                path.push_back(node);
-                node = parent[node];
-            }
-            std::reverse(path.begin(), path.end());
-            return path;
-        }
-
-        if (capacity.count(current)) {
-            for (const auto& [neighbor, cap] : capacity[current]) {
-                if (cap > 0 && !visited.count(neighbor)) {
-                    std::string baseNeighbor = neighbor.substr(0, neighbor.find_last_of('_'));
-                    bool canUse = true;
-                    
-                    if (neighbor.find("_in") == std::string::npos && 
-                        neighbor.find("_out") == std::string::npos &&
-                        baseNeighbor != "S_d") {
-                        auto it = currentOccupancy.find(baseNeighbor);
-                        if (it != currentOccupancy.end() && rooms.count(baseNeighbor)) {
-                            canUse = it->second < rooms.at(baseNeighbor).capacity;
-                        }
-                    }
-                    
-                    if (canUse) {
-                        visited.insert(neighbor);
-                        parent[neighbor] = current;
-                        q.push(neighbor);
-                    }
+            // Vérifier la destination du mouvement
+            std::string nextRoom = *(it + 1);
+            std::string baseNext = nextRoom.substr(0, nextRoom.find_last_of('_'));
+            
+            // Pénaliser selon l'occupation de la salle de destination
+            if (occupancy.count(baseNext) && rooms.count(baseNext)) {
+                int occ = occupancy.at(baseNext);
+                int cap = rooms.at(baseNext).capacity;
+                if (occ >= cap) {
+                    score += 10000; // Interdire si plein
+                } else {
+                    score += occ * 3; // Pénalité légère pour congestion
                 }
             }
+            
+            options.push_back({score, move});
         }
     }
     
-    return {};
+    if (options.empty()) {
+        std::cout << "ATTENTION: Aucun mouvement possible depuis " << currentPos << "\n";
+        return {};
+    }
+    
+    std::sort(options.begin(), options.end());
+    return options[0].second;
 }
 
 bool Anthill::isInternalMovement(const std::string& from, const std::string& to) {
@@ -282,26 +204,14 @@ void Anthill::scheduleMovements() {
         rooms["S_v"].occupancy = ants.size();
     }
 
-    // Initialiser toutes les fourmis au départ
-    for (auto& ant : ants) {
-        ant.currentRoom = "S_v_out";
-        ant.pathIndex = 0;
-        ant.path.clear();
-    }
-
-    // Assignment initial diversifié
-    std::cout << "\n=== ASSIGNMENT INITIAL DES FOURMIS ===\n";
-    for (size_t i = 0; i < ants.size(); ++i) {
-        // Assigner chaque fourmi à un chemin différent (round-robin)
-        int pathIndex = i % availablePaths.size();
-        ants[i].preferredPathIndex = pathIndex;
-        std::cout << "Fourmi " << ants[i].id << " -> Chemin préféré " << (pathIndex + 1) << "\n";
-    }
+    std::cout << "\n=== DÉMARRAGE SIMULATION ===\n";
+    std::cout << "État initial: " << ants.size() << " fourmis en S_v\n";
 
     while (!allArrived) {
         std::vector<std::string> step;
         allArrived = true;
         
+        // Copie de l'état actuel pour calculer les changements
         std::unordered_map<std::string, int> nextOccupancy;
         for (const auto& [name, room] : rooms) {
             if (name.find("_in") == std::string::npos && name.find("_out") == std::string::npos) {
@@ -311,7 +221,7 @@ void Anthill::scheduleMovements() {
 
         bool someMovement = false;
 
-        // Trier les fourmis par ID pour un ordre déterministe
+        // Trier les fourmis par ID pour déterminisme
         std::vector<Ant*> sortedAnts;
         for (auto& ant : ants) {
             sortedAnts.push_back(&ant);
@@ -323,16 +233,15 @@ void Anthill::scheduleMovements() {
             if (ant->currentRoom != "S_d_in") {
                 allArrived = false;
                 
-                // Utiliser le chemin préféré ou chercher une alternative
-                std::vector<std::string> bestPath = getBestAvailablePath(ant->currentRoom, nextOccupancy, ant->id);
+                std::vector<std::string> bestMove = findBestNextMove(ant->currentRoom, nextOccupancy);
                 
-                if (bestPath.size() >= 2) {
-                    std::string from = bestPath[0];
-                    std::string to = bestPath[1];
+                if (bestMove.size() == 2) {
+                    std::string from = bestMove[0];
+                    std::string to = bestMove[1];
                     
                     std::string baseFrom = from.substr(0, from.find_last_of('_'));
                     std::string baseTo = to.substr(0, to.find_last_of('_'));
-
+                    
                     bool isInternal = isInternalMovement(from, to);
                     bool isSink = baseTo == "S_d";
                     bool isSource = baseFrom == "S_v";
@@ -340,12 +249,16 @@ void Anthill::scheduleMovements() {
                     bool canMove = false;
                     
                     if (isInternal) {
+                        // Mouvements internes toujours autorisés
                         canMove = true;
                     } else if (isSink) {
+                        // Mouvement vers la destination finale toujours autorisé
                         canMove = true;
                     } else if (isSource) {
+                        // Mouvement depuis la source - vérifier la capacité de destination
                         canMove = nextOccupancy[baseTo] < rooms[baseTo].capacity;
                     } else {
+                        // Mouvement entre salles normales
                         if (to.find("_in") != std::string::npos || to.find("_out") != std::string::npos) {
                             canMove = true;
                         } else {
@@ -357,61 +270,86 @@ void Anthill::scheduleMovements() {
                         someMovement = true;
                         ant->currentRoom = to;
 
+                        // Gérer les mouvements entre salles réelles
                         if (isSource && !isInternal) {
+                            // Fourmi quitte S_v pour aller vers une vraie salle
                             nextOccupancy["S_v"]--;
                             nextOccupancy[baseTo]++;
                             step.push_back("    Fourmi " + std::to_string(ant->id) + " - S_v vers " + baseTo);
                         } else if (!isInternal && !isSink && 
                                    from.find("_out") != std::string::npos && to.find("_in") != std::string::npos) {
+                            // Fourmi passe d'une salle_out vers une autre salle_in (mouvement entre salles)
                             if (baseFrom != baseTo) {
                                 nextOccupancy[baseFrom]--;
                                 nextOccupancy[baseTo]++;
                                 step.push_back("    Fourmi " + std::to_string(ant->id) + " - " + baseFrom + " vers " + baseTo);
                             }
                         } else if (isSink) {
+                            // Fourmi arrive à destination
                             if (from.find("_out") != std::string::npos) {
                                 nextOccupancy[baseFrom]--;
                             }
                             nextOccupancy["S_d"]++;
-                            step.push_back("    Fourmi " + std::to_string(ant->id) + " - " + baseFrom + " vers S_d (ARRIVÉE!)");
+                            step.push_back("    Fourmi " + std::to_string(ant->id) + " - " + baseFrom + " vers S_d (ARRIVEE!)");
                         }
                     }
                 }
             }
         }
 
+        // Appliquer les changements d'occupancy
         for (const auto& [roomName, count] : nextOccupancy) {
             if (rooms.count(roomName)) {
                 rooms[roomName].occupancy = count;
             }
         }
 
+        // Vérification de sécurité
+        bool capacityViolation = false;
+        for (const auto& [name, room] : rooms) {
+            if (name.find("_in") == std::string::npos && name.find("_out") == std::string::npos) {
+                if (room.occupancy > room.capacity) {
+                    std::cout << "⚠️  ERREUR: " << name << " a " << room.occupancy 
+                              << " fourmis mais capacité = " << room.capacity << "\n";
+                    capacityViolation = true;
+                }
+                if (room.occupancy < 0) {
+                    std::cout << "⚠️  ERREUR: " << name << " a une occupation négative: " << room.occupancy << "\n";
+                    capacityViolation = true;
+                }
+            }
+        }
+
+        if (capacityViolation) {
+            std::cout << "❌ SIMULATION ARRÊTÉE - Violation détectée\n";
+            break;
+        }
+
         if (someMovement) {
-            std::cout << "\n        === ÉTAPE " << stepNumber << " ===\n";
-            if (step.empty()) {
-                std::cout << "    (Mouvements internes seulement)\n";
-            } else {
+            // MODIFICATION: N'afficher que les étapes avec de vrais mouvements
+            if (!step.empty()) {
+                std::cout << "\n        === ETAPE " << stepNumber << " ===\n";
                 for (const auto& move : step) {
                     std::cout << move << "\n";
                 }
+                
+                std::cout << "    Etat des salles: ";
+                for (const auto& [name, room] : rooms) {
+                    if (name.find("_in") == std::string::npos && name.find("_out") == std::string::npos) {
+                        std::cout << name << "(" << room.occupancy << "/" << room.capacity << ") ";
+                    }
+                }
+                std::cout << "\n";
             }
             stepNumber++;
-            
-            std::cout << "    État des salles: ";
-            for (const auto& [name, room] : rooms) {
-                if (name.find("_in") == std::string::npos && name.find("_out") == std::string::npos) {
-                    std::cout << name << "(" << room.occupancy << "/" << room.capacity << ") ";
-                }
-            }
-            std::cout << "\n";
         } else if (!allArrived) {
-            std::cout << "\n    BLOCAGE DÉTECTÉ - Aucun mouvement possible\n";
+            std::cout << "\n    BLOCAGE DETECTE - Aucun mouvement possible\n";
             break;
         }
     }
 
     if (allArrived) {
-        std::cout << "\n=== SIMULATION TERMINÉE - Toutes les fourmis sont arrivées en " << (stepNumber - 1) << " étapes ===\n";
+        std::cout << "\n=== ✅ TOUTES LES FOURMIS ARRIVEES EN " << (stepNumber - 1) << " ETAPES ===\n";
     }
 }
 
@@ -421,7 +359,7 @@ void Anthill::simulate(int numAnts) {
     for (int i = 0; i < numAnts; ++i)
         ants.push_back(Ant{i + 1});
 
-    std::cout << "=== DÉMARRAGE SIMULATION AVEC DIVERSIFICATION FORCÉE (" << numAnts << " fourmis) ===\n";
+    std::cout << "=== SIMULATION CORRIGEE (" << numAnts << " fourmis) ===\n";
     
     edmondsKarp("S_v_out", "S_d_in");
     buildPaths();

@@ -20,7 +20,6 @@ struct Ant {
     std::vector<std::string> path;
     int pathIndex = 0;
     std::string currentRoom;
-    int preferredPathIndex = 0; // Nouveau: chemin préféré
 };
 
 class Anthill {
@@ -44,19 +43,14 @@ private:
     void buildPaths();
     void scheduleMovements();
     
-    // Nouvelles méthodes pour le routage adaptatif avec diversification
+    // Méthodes pour optimisation du débit global avec respect des capacités
     std::vector<std::vector<std::string>> availablePaths;
     
-    std::vector<std::vector<std::string>> findAllPaths(const std::string& start, const std::string& end, int maxPaths);
-    std::vector<std::string> findShortestPath(const std::string& start, const std::string& end,
-                                            const std::unordered_map<std::string, int>& currentOccupancy);
-    std::vector<std::string> getBestAvailablePath(const std::string& currentPosition,
-                                                const std::unordered_map<std::string, int>& currentOccupancy,
-                                                int antId);
     int calculateRealPathLength(const std::vector<std::string>& path);
-    int calculatePathScore(const std::vector<std::string>& path, 
-                          const std::unordered_map<std::string, int>& currentOccupancy, 
-                          int antId);
+    std::vector<std::string> findBestNextMove(const std::string& currentPos, 
+                                             const std::unordered_map<std::string, int>& occupancy);
+    bool canMoveTo(const std::string& from, const std::string& to, 
+                   const std::unordered_map<std::string, int>& currentOccupancy);
 };
 
 #endif
