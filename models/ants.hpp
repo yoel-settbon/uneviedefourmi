@@ -25,6 +25,7 @@ public:
     void addTunnel(std::string from, std::string to);
     void printGraph();
     void simulate(int numAnts);
+    bool loadFromFile(const std::string& path);
 
 private:
     std::map<std::string, Room> rooms;
@@ -35,5 +36,6 @@ private:
     void findPaths();
     void scheduleMovements();
 };
+
 
 #endif
