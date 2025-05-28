@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>  // Ajouté pour std::set utilisé dans bfs
 
 struct Room {
     std::string name;
@@ -32,10 +33,10 @@ private:
     std::vector<Ant> ants;
     std::vector<std::vector<std::string>> steps;
 
-    std::vector<std::string> bfs(const std::string& start, const std::string& end);
+    // Modification : ajout du paramètre 'avoid'
+    std::vector<std::string> bfs(const std::string& start, const std::string& end, const std::set<std::string>& avoid);
     void findPaths();
     void scheduleMovements();
 };
-
 
 #endif

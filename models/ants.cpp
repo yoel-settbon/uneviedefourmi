@@ -34,7 +34,8 @@ void Anthill::printGraph() {
     }
 }
 
-std::vector<std::string> Anthill::bfs(const std::string& start, const std::string& end) {
+// Modification : ajout du paramètre 'avoid' pour éviter certaines pièces pleines
+std::vector<std::string> Anthill::bfs(const std::string& start, const std::string& end, const std::set<std::string>& avoid) {
     std::queue<std::vector<std::string>> q;
     std::set<std::string> visited;
     q.push({start});
@@ -49,6 +50,7 @@ std::vector<std::string> Anthill::bfs(const std::string& start, const std::strin
         visited.insert(current);
 
         for (const auto& neighbor : rooms[current].neighbors) {
+            if (avoid.count(neighbor)) continue; // éviter les pièces à éviter
             auto newPath = path;
             newPath.push_back(neighbor);
             q.push(newPath);
@@ -58,10 +60,11 @@ std::vector<std::string> Anthill::bfs(const std::string& start, const std::strin
 }
 
 void Anthill::findPaths() {
-    std::vector<std::string> path = bfs("Sv", "Sd");
+    std::vector<std::string> path = bfs("Sv", "Sd", {});
     for (int i = 0; i < ants.size(); ++i) {
         ants[i].path = path;
         ants[i].currentRoom = "Sv";
+        ants[i].pathIndex = 0;
     }
 }
 
@@ -71,29 +74,58 @@ void Anthill::scheduleMovements() {
         std::vector<std::string> step;
         allArrived = true;
 
+        // Réinitialiser l'occupation des pièces sauf Sv et Sd
         for (auto& [name, room] : rooms) {
             room.occupancy = 0;
         }
+        // Occupation initiale des fourmis dans leurs pièces (sauf Sd)
+        for (const auto& ant : ants) {
+            if (ant.currentRoom != "Sd") {
+                rooms[ant.currentRoom].occupancy++;
+            }
+        }
 
         for (auto& ant : ants) {
-            if (ant.pathIndex < ant.path.size() - 1) {
-                std::string nextRoom = ant.path[ant.pathIndex + 1];
-                if (nextRoom == "Sd" || rooms[nextRoom].occupancy < rooms[nextRoom].capacity) {
-                    step.push_back("    Ant " + std::to_string(ant.id) + " - " + ant.path[ant.pathIndex] + " to " + nextRoom);
-                    ant.currentRoom = nextRoom;
-                    ant.pathIndex++;
-                    if (nextRoom != "Sd") rooms[nextRoom].occupancy++;
-                } else {
-                    allArrived = false;
+            if (ant.currentRoom != "Sd") {
+                if (ant.pathIndex < (int)ant.path.size() - 1) {
+                    std::string nextRoom = ant.path[ant.pathIndex + 1];
+                    if (nextRoom == "Sd" || rooms[nextRoom].occupancy < rooms[nextRoom].capacity) {
+                        // Déplacement possible vers la prochaine pièce
+                        step.push_back("    Ant " + std::to_string(ant.id) + " - " + ant.currentRoom + " to " + nextRoom);
+                        // Mise à jour des occupations
+                        rooms[ant.currentRoom].occupancy--;
+                        ant.currentRoom = nextRoom;
+                        ant.pathIndex++;
+                        if (nextRoom != "Sd") rooms[nextRoom].occupancy++;
+                    } else {
+                        // Pièce pleine, chercher un chemin alternatif
+                        std::set<std::string> avoid = {nextRoom};
+                        auto newPath = bfs(ant.currentRoom, "Sd", avoid);
+                        if (!newPath.empty()) {
+                            ant.path = newPath;
+                            ant.pathIndex = 0;
+                            // Essayer d'avancer sur le nouveau chemin
+                            if (ant.path.size() > 1) {
+                                std::string newNextRoom = ant.path[1];
+                                if (newNextRoom == "Sd" || rooms[newNextRoom].occupancy < rooms[newNextRoom].capacity) {
+                                    step.push_back("    Ant " + std::to_string(ant.id) + " - " + ant.currentRoom + " to " + newNextRoom);
+                                    rooms[ant.currentRoom].occupancy--;
+                                    ant.currentRoom = newNextRoom;
+                                    ant.pathIndex = 1;
+                                    if (newNextRoom != "Sd") rooms[newNextRoom].occupancy++;
+                                }
+                            }
+                        } else {
+                            // Pas de chemin alternatif, fourmi bloquée cette étape
+                            allArrived = false;
+                        }
+                    }
                 }
+                if (ant.currentRoom != "Sd") allArrived = false;
             }
         }
 
         if (!step.empty()) steps.push_back(step);
-
-        for (const auto& ant : ants) {
-            if (ant.currentRoom != "Sd") allArrived = false;
-        }
     }
 }
 

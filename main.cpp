@@ -29,7 +29,6 @@ int main() {
     std::string folder = "anthill/";
     std::vector<fs::directory_entry> entries;
 
-    // Load all .txt anthill files
     for (const auto& entry : fs::directory_iterator(folder)) {
         if (entry.path().extension() == ".txt") {
             entries.push_back(entry);
