@@ -117,7 +117,7 @@ void Anthill::simulate(int numAnts) {
 bool Anthill::loadFromFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        std::cerr << "Erreur : impossible d'ouvrir le fichier " << path << std::endl;
+        std::cerr << "Error : impossible to open file " << path << std::endl;
         return false;
     }
 
@@ -157,7 +157,7 @@ bool Anthill::loadFromFile(const std::string& path) {
                 try {
                     capacity = std::stoi(capStr);
                 } catch (...) {
-                    std::cerr << "Erreur de capacité dans : " << line << std::endl;
+                    std::cerr << "Capacity error in : " << line << std::endl;
                 }
             } else {
                 roomName = line;
