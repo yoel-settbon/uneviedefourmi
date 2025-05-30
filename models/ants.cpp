@@ -34,7 +34,7 @@ void Anthill::printGraph() {
     }
 }
 
-// Modification : ajout du paramètre 'avoid' pour éviter certaines pièces pleines
+// Modification: added parameter 'avoid' to avoid some full rooms
 std::vector<std::string> Anthill::bfs(const std::string& start, const std::string& end, const std::set<std::string>& avoid) {
     std::queue<std::vector<std::string>> q;
     std::set<std::string> visited;
@@ -50,7 +50,7 @@ std::vector<std::string> Anthill::bfs(const std::string& start, const std::strin
         visited.insert(current);
 
         for (const auto& neighbor : rooms[current].neighbors) {
-            if (avoid.count(neighbor)) continue; // éviter les pièces à éviter
+            if (avoid.count(neighbor)) continue; // avoid rooms to be avoided
             auto newPath = path;
             newPath.push_back(neighbor);
             q.push(newPath);
@@ -74,11 +74,11 @@ void Anthill::scheduleMovements() {
         std::vector<std::string> step;
         allArrived = true;
 
-        // Réinitialiser l'occupation des pièces sauf Sv et Sd
+        // Reset occupancy of rooms except Sv and Sd
         for (auto& [name, room] : rooms) {
             room.occupancy = 0;
         }
-        // Occupation initiale des fourmis dans leurs pièces (sauf Sd)
+        // Initial occupancy of ants in their rooms (except Sd)
         for (const auto& ant : ants) {
             if (ant.currentRoom != "Sd") {
                 rooms[ant.currentRoom].occupancy++;
@@ -90,21 +90,21 @@ void Anthill::scheduleMovements() {
                 if (ant.pathIndex < (int)ant.path.size() - 1) {
                     std::string nextRoom = ant.path[ant.pathIndex + 1];
                     if (nextRoom == "Sd" || rooms[nextRoom].occupancy < rooms[nextRoom].capacity) {
-                        // Déplacement possible vers la prochaine pièce
+                        // Movement possible to next room
                         step.push_back("    Ant " + std::to_string(ant.id) + " - " + ant.currentRoom + " to " + nextRoom);
-                        // Mise à jour des occupations
+                        // Update occupancy
                         rooms[ant.currentRoom].occupancy--;
                         ant.currentRoom = nextRoom;
                         ant.pathIndex++;
                         if (nextRoom != "Sd") rooms[nextRoom].occupancy++;
                     } else {
-                        // Pièce pleine, chercher un chemin alternatif
+                        // Room full, look for alternative path
                         std::set<std::string> avoid = {nextRoom};
                         auto newPath = bfs(ant.currentRoom, "Sd", avoid);
                         if (!newPath.empty()) {
                             ant.path = newPath;
                             ant.pathIndex = 0;
-                            // Essayer d'avancer sur le nouveau chemin
+                            // Try to move on the new path
                             if (ant.path.size() > 1) {
                                 std::string newNextRoom = ant.path[1];
                                 if (newNextRoom == "Sd" || rooms[newNextRoom].occupancy < rooms[newNextRoom].capacity) {
@@ -116,7 +116,7 @@ void Anthill::scheduleMovements() {
                                 }
                             }
                         } else {
-                            // Pas de chemin alternatif, fourmi bloquée cette étape
+                            // No alternative path, ant blocked this step
                             allArrived = false;
                         }
                     }
@@ -139,7 +139,7 @@ void Anthill::simulate(int numAnts) {
     scheduleMovements();
 
     for (size_t i = 0; i < steps.size(); ++i) {
-        std::cout << "\n        === E " << i + 1 << " ===\n";
+        std::cout << "\n        === Step " << i + 1 << " ===\n";
         for (const auto& move : steps[i]) {
             std::cout << move << "\n";
         }
@@ -149,7 +149,7 @@ void Anthill::simulate(int numAnts) {
 bool Anthill::loadFromFile(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
-        std::cerr << "Error : impossible to open file " << path << std::endl;
+        std::cerr << "Error: unable to open file " << path << std::endl;
         return false;
     }
 
@@ -159,7 +159,7 @@ bool Anthill::loadFromFile(const std::string& path) {
 
     std::string line;
     while (std::getline(file, line)) {
-        // Nettoyage
+        // Cleaning
         line.erase(0, line.find_first_not_of(" \t\r\n"));
         line.erase(line.find_last_not_of(" \t\r\n") + 1);
         if (line.empty() || line[0] == '#') continue;

@@ -47,9 +47,11 @@ int main() {
     int choice = -1;
 
     while (true) {
+        std::cout << "\ncreate by Emmanuelle, Jerome and Yoel\n";
         std::cout << "\n==============================\n";
         std::cout << "        PICK AN ANTHILL       \n";
         std::cout << "==============================\n";
+
 
         for (size_t i = 0; i < entries.size(); ++i) {
             std::cout << " " << i + 1 << ". Anthill " << i << "\n";
