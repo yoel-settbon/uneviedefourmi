@@ -59,11 +59,18 @@ std::vector<std::string> Anthill::bfs(const std::string& start, const std::strin
 
 void Anthill::findPaths() {
     std::vector<std::string> path = bfs("Sv", "Sd");
+
+    if (path.empty()) {
+        std::cout << "❌ Aucun chemin trouvé entre Sv et Sd.\n";
+        return;
+    }
+
     for (int i = 0; i < ants.size(); ++i) {
         ants[i].path = path;
         ants[i].currentRoom = "Sv";
     }
 }
+
 
 void Anthill::scheduleMovements() {
     bool allArrived = false;
@@ -98,21 +105,41 @@ void Anthill::scheduleMovements() {
 }
 
 void Anthill::simulate(int numAnts) {
+    // Réinitialisation
     ants.clear();
     steps.clear();
+
+    // Création des fourmis
     for (int i = 0; i < numAnts; ++i) {
         ants.push_back(Ant{i + 1, "Sv"});
     }
+
+    // Recherche de chemin avec BFS
     findPaths();
+
+    // Si aucun chemin trouvé, on arrête là
+    if (ants.empty() || ants[0].path.empty()) {
+        std::cout << "\n⚠️  Aucune simulation possible. Aucune fourmi n’a de chemin assigné.\n";
+        return;
+    }
+
+    // Planification des mouvements
     scheduleMovements();
 
+    // Affichage des étapes de la simulation
     for (size_t i = 0; i < steps.size(); ++i) {
-        std::cout << "\n        === E " << i + 1 << " ===\n";
+        std::cout << "\n        === ÉTAPE " << i + 1 << " ===\n";
         for (const auto& move : steps[i]) {
             std::cout << move << "\n";
         }
     }
+
+    // Message si aucune étape n'a été simulée
+    if (steps.empty()) {
+        std::cout << "\n⚠️  Aucune étape simulée. Vérifiez que la fourmilière est bien connectée.\n";
+    }
 }
+
 
 bool Anthill::loadFromFile(const std::string& path) {
     std::ifstream file(path);
@@ -124,6 +151,9 @@ bool Anthill::loadFromFile(const std::string& path) {
     rooms.clear();
     ants.clear();
     steps.clear();
+    addRoom("Sv", 100);  // Vestibule
+    addRoom("Sd", 100);  // Dortoir
+
 
     std::string line;
     while (std::getline(file, line)) {
